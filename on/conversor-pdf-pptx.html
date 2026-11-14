@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   =====================================================================
-  Conversor PDF para PPTX - v2.0
+  Conversor PDF para PPTX - v2.1
   Autor: Nelson Ferreira
   GitHub: https://github.com/netcodebr/
   Descrição: Conversor local (client-side) de arquivos PDF para PPTX.
@@ -17,7 +17,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="author" content="Nelson Ferreira" />
   <meta name="description" content="Conversor de PDF para PowerPoint (PPTX) 100% local no navegador." />
-  <title>Conversor PDF para PPTX (v2)</title>
+  <title>Conversor PDF para PPTX</title>
 
   <!-- PWA -->
   <meta name="theme-color" content="#004aad" />
@@ -44,6 +44,7 @@
       --error: #ef4444;
       --warn-bg: #fffbeb;
       --warn-border: #fde68a;
+      --info-bg: #f8fafc;
     }
 
     * {
@@ -66,7 +67,7 @@
     .container {
       background: var(--card);
       width: 100%;
-      max-width: 640px;
+      max-width: 660px;
       border-radius: 14px;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
       padding: 30px;
@@ -202,6 +203,23 @@
       border-radius: 8px;
       font-size: 0.88rem;
       background: #fff;
+    }
+
+    .field select:disabled {
+      background: #f3f4f6;
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+
+    .mode-hint {
+      grid-column: 1 / -1;
+      background: var(--info-bg);
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      color: #475569;
+      line-height: 1.4;
     }
 
     .checkbox-row {
@@ -345,7 +363,7 @@
       text-decoration: underline;
     }
 
-    @media (max-width: 500px) {
+    @media (max-width: 520px) {
       .options {
         grid-template-columns: 1fr;
       }
@@ -381,8 +399,9 @@
       <div class="field">
         <label for="modeSelect">Modo de Conversão</label>
         <select id="modeSelect">
-          <option value="image" selected>Imagem (Fidelidade 100%)</option>
-          <option value="editable">Texto Editável (Experimental)</option>
+          <option value="hybrid" selected>Híbrido (Imagens + Texto Editável)</option>
+          <option value="objects">Objetos Soltos (Imagens Movíveis + Texto)</option>
+          <option value="image">Imagem (Fidelidade 100%)</option>
         </select>
       </div>
 
@@ -393,6 +412,10 @@
           <option value="16x9">Widescreen (16:9)</option>
           <option value="4x3">Padrão (4:3)</option>
         </select>
+      </div>
+
+      <div class="mode-hint" id="modeHint">
+        <strong>Híbrido:</strong> Mantém fotos, gráficos, tabelas e fundos no slide e cria caixas de texto editáveis com as cores originais por cima.
       </div>
 
       <div class="field">
@@ -447,7 +470,7 @@
 
     <footer class="footer">
       Desenvolvido por <strong>Nelson Ferreira</strong> •
-      <a href="https://github.com/netcodebr/" target="_blank" rel="noopener">GitHub</a> • v2.0
+      <a href="https://github.com/netcodebr/" target="_blank" rel="noopener">GitHub</a> • v2.1
     </footer>
   </div>
 
@@ -465,6 +488,7 @@
     const unlockBtn = document.getElementById("unlockBtn");
 
     const modeSelect = document.getElementById("modeSelect");
+    const modeHint = document.getElementById("modeHint");
     const aspectSelect = document.getElementById("aspectSelect");
     const qualitySelect = document.getElementById("qualitySelect");
     const formatSelect = document.getElementById("formatSelect");
@@ -486,6 +510,12 @@
     let currentBuffer = null;
     let selectedFile = null;
     let isCancelled = false;
+
+    const MODE_HINTS = {
+      hybrid: "<strong>Híbrido:</strong> Mantém fotos, gráficos, tabelas e fundos no slide e cria caixas de texto editáveis com as cores originais por cima.",
+      objects: "<strong>Objetos Soltos:</strong> Extrai cada foto/imagem como objeto movível no PowerPoint + textos editáveis. (Formas desenhadas e tabelas sem imagem não vão como objetos).",
+      image: "<strong>Imagem:</strong> Transforma cada página em um slide com 100% de fidelidade visual (textos ficam como imagem, mas disponíveis nas Notas)."
+    };
 
     function formatBytes(bytes) {
       if (bytes < 1024) return bytes + " B";
@@ -590,9 +620,7 @@
     }
 
     unlockBtn.addEventListener("click", () => {
-      if (currentBuffer) {
-        loadPdfDocument(currentBuffer, pdfPasswordInput.value);
-      }
+      if (currentBuffer) loadPdfDocument(currentBuffer, pdfPasswordInput.value);
     });
 
     pdfPasswordInput.addEventListener("keydown", (e) => {
@@ -602,9 +630,11 @@
     });
 
     modeSelect.addEventListener("change", () => {
-      const isEditable = modeSelect.value === "editable";
-      qualitySelect.disabled = isEditable;
-      formatSelect.disabled = isEditable;
+      const mode = modeSelect.value;
+      modeHint.innerHTML = MODE_HINTS[mode];
+      const disableImgOpts = mode === "objects";
+      qualitySelect.disabled = disableImgOpts;
+      formatSelect.disabled = disableImgOpts;
     });
 
     pdfInput.addEventListener("change", (e) => {
@@ -632,8 +662,204 @@
       statusText.textContent = "Cancelando...";
     });
 
+    // Cria um proxy de contexto 2D que ignora desenhos de texto (mantém fotos, gráficos, tabelas e fundos)
+    function createNoTextContext(ctx) {
+      return new Proxy(ctx, {
+        get(target, prop) {
+          if (prop === "fillText" || prop === "strokeText") {
+            return function () {};
+          }
+          const val = target[prop];
+          return typeof val === "function" ? val.bind(target) : val;
+        },
+        set(target, prop, value) {
+          target[prop] = value;
+          return true;
+        }
+      });
+    }
+
+    function rgbToHex(r, g, b) {
+      return [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase();
+    }
+
+    // Detecta a cor exata do texto comparando o canvas completo vs o canvas sem texto
+    function detectBoxTextColor(fullData, bgData, canvasW, canvasH, box, renderScale) {
+      if (!fullData || !bgData) return "1F2937";
+
+      const x0 = Math.max(0, Math.floor(box.xPt * renderScale));
+      const y0 = Math.max(0, Math.floor(box.yTopPt * renderScale));
+      const x1 = Math.min(canvasW - 1, Math.ceil((box.xPt + box.wPt) * renderScale));
+      const y1 = Math.min(canvasH - 1, Math.ceil((box.yTopPt + box.fontSizePt * 1.15) * renderScale));
+
+      if (x1 <= x0 || y1 <= y0) return "1F2937";
+
+      const stepX = Math.max(1, Math.floor((x1 - x0) / 18));
+      const stepY = Math.max(1, Math.floor((y1 - y0) / 8));
+
+      let maxDiff = 0;
+      let bestColor = "1F2937";
+
+      for (let y = y0; y <= y1; y += stepY) {
+        for (let x = x0; x <= x1; x += stepX) {
+          const idx = (y * canvasW + x) * 4;
+          const rF = fullData[idx];
+          const gF = fullData[idx + 1];
+          const bF = fullData[idx + 2];
+
+          const diff =
+            Math.abs(rF - bgData[idx]) +
+            Math.abs(gF - bgData[idx + 1]) +
+            Math.abs(bF - bgData[idx + 2]);
+
+          if (diff > maxDiff) {
+            maxDiff = diff;
+            bestColor = rgbToHex(rF, gF, bF);
+          }
+        }
+      }
+
+      return maxDiff > 35 ? bestColor : "1F2937";
+    }
+
+    function multiplyMatrix(m1, m2) {
+      return [
+        m1[0] * m2[0] + m1[2] * m2[1],
+        m1[1] * m2[0] + m1[3] * m2[1],
+        m1[0] * m2[2] + m1[2] * m2[3],
+        m1[1] * m2[2] + m1[3] * m2[3],
+        m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+        m1[1] * m2[4] + m1[3] * m2[5] + m1[5]
+      ];
+    }
+
+    function applyMatrix(m, x, y) {
+      return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+    }
+
+    function pdfImgToDataUrl(imgObj, tempCanvas, tempCtx) {
+      if (!imgObj || !imgObj.width || !imgObj.height) return null;
+      const w = imgObj.width;
+      const h = imgObj.height;
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+
+      if (imgObj.bitmap) {
+        tempCtx.clearRect(0, 0, w, h);
+        tempCtx.drawImage(imgObj.bitmap, 0, 0, w, h);
+        return tempCanvas.toDataURL("image/png");
+      }
+
+      if (!imgObj.data) return null;
+      const src = imgObj.data;
+      const rgba = new Uint8ClampedArray(w * h * 4);
+
+      if (src.length === w * h * 4) {
+        rgba.set(src);
+      } else if (src.length === w * h * 3) {
+        for (let i = 0, j = 0; i < w * h; i++, j += 3) {
+          const k = i * 4;
+          rgba[k] = src[j];
+          rgba[k + 1] = src[j + 1];
+          rgba[k + 2] = src[j + 2];
+          rgba[k + 3] = 255;
+        }
+      } else if (src.length === w * h) {
+        for (let i = 0; i < w * h; i++) {
+          const k = i * 4;
+          rgba[k] = rgba[k + 1] = rgba[k + 2] = src[i];
+          rgba[k + 3] = 255;
+        }
+      } else {
+        // 1 bit por pixel (máscaras / preto e branco)
+        const stride = Math.ceil(w / 8);
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const byte = src[y * stride + (x >> 3)];
+            const bit = (byte >> (7 - (x & 7))) & 1;
+            const val = bit ? 255 : 0;
+            const k = (y * w + x) * 4;
+            rgba[k] = rgba[k + 1] = rgba[k + 2] = val;
+            rgba[k + 3] = 255;
+          }
+        }
+      }
+
+      tempCtx.putImageData(new ImageData(rgba, w, h), 0, 0);
+      return tempCanvas.toDataURL("image/png");
+    }
+
+    async function addExtractedImagesToSlide(page, slide, baseVp, offsetX, offsetY, fitRatio) {
+      const opList = await page.getOperatorList();
+      const OPS = pdfjsLib.OPS;
+      const stack = [];
+      let ctm = [1, 0, 0, 1, 0, 0];
+
+      const imgCanvas = document.createElement("canvas");
+      const imgCtx = imgCanvas.getContext("2d");
+
+      for (let i = 0; i < opList.fnArray.length; i++) {
+        const fn = opList.fnArray[i];
+        const args = opList.argsArray[i];
+
+        if (fn === OPS.save) {
+          stack.push(ctm.slice());
+        } else if (fn === OPS.restore) {
+          if (stack.length > 0) ctm = stack.pop();
+        } else if (fn === OPS.transform) {
+          ctm = multiplyMatrix(ctm, args);
+        } else if (fn === OPS.paintFormXObjectBegin) {
+          stack.push(ctm.slice());
+          if (Array.isArray(args[0]) && args[0].length === 6) {
+            ctm = multiplyMatrix(ctm, args[0]);
+          }
+        } else if (fn === OPS.paintFormXObjectEnd) {
+          if (stack.length > 0) ctm = stack.pop();
+        } else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject) {
+          let imgObj = null;
+          if (fn === OPS.paintInlineImageXObject) {
+            imgObj = args[0];
+          } else {
+            const imgId = args[0];
+            if (page.objs.has(imgId)) imgObj = page.objs.get(imgId);
+            else if (page.commonObjs.has(imgId)) imgObj = page.commonObjs.get(imgId);
+          }
+
+          const dataUrl = pdfImgToDataUrl(imgObj, imgCanvas, imgCtx);
+          if (!dataUrl) continue;
+
+          const totalM = multiplyMatrix(baseVp.transform, ctm);
+          const corners = [
+            applyMatrix(totalM, 0, 0),
+            applyMatrix(totalM, 1, 0),
+            applyMatrix(totalM, 0, 1),
+            applyMatrix(totalM, 1, 1)
+          ];
+
+          const xs = corners.map((c) => c[0]);
+          const ys = corners.map((c) => c[1]);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+
+          const wPt = maxX - minX;
+          const hPt = maxY - minY;
+          if (wPt < 4 || hPt < 4) continue;
+
+          slide.addImage({
+            data: dataUrl,
+            x: offsetX + (minX / 72) * fitRatio,
+            y: offsetY + (minY / 72) * fitRatio,
+            w: (wPt / 72) * fitRatio,
+            h: (hPt / 72) * fitRatio
+          });
+        }
+      }
+    }
+
     function extractNotesText(textContent) {
-      let lines = [];
+      const lines = [];
       let currentLine = [];
       let lastY = null;
 
@@ -651,19 +877,46 @@
       return lines.join("\n").replace(/ +/g, " ").trim();
     }
 
-    function addEditableTextToSlide(slide, textContent, pageW, pageH, offsetX, offsetY, fitRatio) {
+    function detectFontStyle(fontName, styles) {
+      const styleInfo = styles && styles[fontName] ? styles[fontName].fontFamily || "" : "";
+      const combined = `${fontName || ""} ${styleInfo}`;
+      const bold = /bold|black|heavy|semibold|demi/i.test(combined);
+      const italic = /italic|oblique/i.test(combined);
+
+      let fontFace = "Arial";
+      if (/courier|mono|consolas|menlo/i.test(combined)) fontFace = "Courier New";
+      else if (/times|serif|georgia|garamond/i.test(combined)) fontFace = "Times New Roman";
+
+      return { bold, italic, fontFace };
+    }
+
+    function addEditableTextToSlide(
+      slide,
+      textContent,
+      pageH,
+      offsetX,
+      offsetY,
+      fitRatio,
+      fullData,
+      bgData,
+      canvasW,
+      canvasH,
+      renderScale
+    ) {
       const rawItems = textContent.items
         .filter((it) => it.str && it.str.trim().length > 0)
         .map((it) => {
           const fontSizePt = Math.max(6, Math.hypot(it.transform[0], it.transform[1]));
           const xPt = it.transform[4];
           const yTopPt = pageH * 72 - it.transform[5] - fontSizePt * 0.9;
+          const style = detectFontStyle(it.fontName, textContent.styles);
           return {
             str: it.str,
             xPt,
             yTopPt,
             wPt: it.width || it.str.length * fontSizePt * 0.5,
-            fontSizePt
+            fontSizePt,
+            ...style
           };
         });
 
@@ -677,8 +930,10 @@
         const prev = merged[merged.length - 1];
         if (
           prev &&
+          prev.bold === item.bold &&
+          Math.abs(prev.fontSizePt - item.fontSizePt) <= Math.max(2, prev.fontSizePt * 0.2) &&
           Math.abs(prev.yTopPt - item.yTopPt) <= Math.max(4, prev.fontSizePt * 0.4) &&
-          item.xPt - (prev.xPt + prev.wPt) < prev.fontSizePt * 1.5
+          item.xPt - (prev.xPt + prev.wPt) < prev.fontSizePt * 1.4
         ) {
           const gap = item.xPt - (prev.xPt + prev.wPt);
           prev.str += (gap > prev.fontSizePt * 0.15 ? " " : "") + item.str;
@@ -689,10 +944,11 @@
       }
 
       for (const box of merged) {
+        const color = detectBoxTextColor(fullData, bgData, canvasW, canvasH, box, renderScale);
         const x = offsetX + (box.xPt / 72) * fitRatio;
         const y = offsetY + (box.yTopPt / 72) * fitRatio;
-        const w = Math.max(0.3, (box.wPt / 72) * fitRatio + 0.25);
-        const h = Math.max(0.2, (box.fontSizePt / 72) * fitRatio * 1.4);
+        const w = Math.max(0.3, (box.wPt / 72) * fitRatio + 0.3);
+        const h = Math.max(0.2, (box.fontSizePt / 72) * fitRatio * 1.35);
         const fontSize = Math.max(6, Math.round(box.fontSizePt * fitRatio));
 
         slide.addText(box.str, {
@@ -701,7 +957,10 @@
           w,
           h,
           fontSize,
-          color: "1F2937",
+          fontFace: box.fontFace,
+          bold: box.bold,
+          italic: box.italic,
+          color,
           valign: "top",
           margin: 0
         });
@@ -758,8 +1017,10 @@
           pptx.layout = "PDF_LAYOUT";
         }
 
-        const renderCanvas = document.createElement("canvas");
-        const renderCtx = renderCanvas.getContext("2d");
+        const fullCanvas = document.createElement("canvas");
+        const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+        const bgCanvas = document.createElement("canvas");
+        const bgCtx = bgCanvas.getContext("2d", { willReadFrequently: true });
 
         for (let i = 0; i < pagesToConvert.length; i++) {
           if (isCancelled) {
@@ -784,30 +1045,32 @@
 
           const slide = pptx.addSlide();
 
+          // Renderiza a página completa para pré-visualização, modo imagem e detecção exata das cores dos textos
+          const activeScale = mode === "objects" ? 1.25 : scale;
+          const renderVp = page.getViewport({ scale: activeScale });
+          fullCanvas.width = renderVp.width;
+          fullCanvas.height = renderVp.height;
+          fullCtx.fillStyle = "#ffffff";
+          fullCtx.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
+
+          await page.render({ canvasContext: fullCtx, viewport: renderVp }).promise;
+
+          // Atualiza prévia ao vivo
+          previewCanvas.width = Math.min(400, fullCanvas.width);
+          previewCanvas.height = (previewCanvas.width / fullCanvas.width) * fullCanvas.height;
+          previewCtx.drawImage(fullCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+          previewLabel.textContent = `Convertendo página ${pageNum}`;
+
           let textContent = null;
-          if (includeNotes || mode === "editable") {
+          if (includeNotes || mode !== "image") {
             textContent = await page.getTextContent();
           }
 
           if (mode === "image") {
-            const renderVp = page.getViewport({ scale });
-            renderCanvas.width = renderVp.width;
-            renderCanvas.height = renderVp.height;
-
-            renderCtx.fillStyle = "#ffffff";
-            renderCtx.fillRect(0, 0, renderCanvas.width, renderCanvas.height);
-
-            await page.render({ canvasContext: renderCtx, viewport: renderVp }).promise;
-
-            previewCanvas.width = Math.min(400, renderCanvas.width);
-            previewCanvas.height = (previewCanvas.width / renderCanvas.width) * renderCanvas.height;
-            previewCtx.drawImage(renderCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
-            previewLabel.textContent = `Convertendo página ${pageNum}`;
-
             const imgData =
               imgFormat === "image/jpeg"
-                ? renderCanvas.toDataURL("image/jpeg", 0.92)
-                : renderCanvas.toDataURL("image/png");
+                ? fullCanvas.toDataURL("image/jpeg", 0.92)
+                : fullCanvas.toDataURL("image/png");
 
             slide.addImage({
               data: imgData,
@@ -816,8 +1079,71 @@
               w: finalW,
               h: finalH
             });
-          } else {
-            addEditableTextToSlide(slide, textContent, pageW, pageH, offsetX, offsetY, fitRatio);
+          } else if (mode === "hybrid") {
+            // Renderiza fundo com imagens, tabelas e gráficos (ocultando só os textos)
+            bgCanvas.width = renderVp.width;
+            bgCanvas.height = renderVp.height;
+            bgCtx.fillStyle = "#ffffff";
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+
+            const noTextCtx = createNoTextContext(bgCtx);
+            await page.render({ canvasContext: noTextCtx, viewport: renderVp }).promise;
+
+            const bgDataUrl =
+              imgFormat === "image/jpeg"
+                ? bgCanvas.toDataURL("image/jpeg", 0.92)
+                : bgCanvas.toDataURL("image/png");
+
+            slide.addImage({
+              data: bgDataUrl,
+              x: offsetX,
+              y: offsetY,
+              w: finalW,
+              h: finalH
+            });
+
+            const fullPixels = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height).data;
+            const bgPixels = bgCtx.getImageData(0, 0, bgCanvas.width, bgCanvas.height).data;
+
+            addEditableTextToSlide(
+              slide,
+              textContent,
+              pageH,
+              offsetX,
+              offsetY,
+              fitRatio,
+              fullPixels,
+              bgPixels,
+              fullCanvas.width,
+              fullCanvas.height,
+              activeScale
+            );
+          } else if (mode === "objects") {
+            await addExtractedImagesToSlide(page, slide, baseVp, offsetX, offsetY, fitRatio);
+
+            bgCanvas.width = renderVp.width;
+            bgCanvas.height = renderVp.height;
+            bgCtx.fillStyle = "#ffffff";
+            bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+            const noTextCtx = createNoTextContext(bgCtx);
+            await page.render({ canvasContext: noTextCtx, viewport: renderVp }).promise;
+
+            const fullPixels = fullCtx.getImageData(0, 0, fullCanvas.width, fullCanvas.height).data;
+            const bgPixels = bgCtx.getImageData(0, 0, bgCanvas.width, bgCanvas.height).data;
+
+            addEditableTextToSlide(
+              slide,
+              textContent,
+              pageH,
+              offsetX,
+              offsetY,
+              fitRatio,
+              fullPixels,
+              bgPixels,
+              fullCanvas.width,
+              fullCanvas.height,
+              activeScale
+            );
           }
 
           if (includeNotes && textContent) {
