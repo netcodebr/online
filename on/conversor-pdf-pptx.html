@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   =====================================================================
-  Conversor PDF para PPTX - v2.1
+  Conversor PDF para PPTX - v2.2
   Autor: Nelson Ferreira
   GitHub: https://github.com/netcodebr/
   Descrição: Conversor local (client-side) de arquivos PDF para PPTX.
@@ -347,25 +347,69 @@
       text-align: center;
       font-size: 0.8rem;
       color: var(--muted);
+      line-height: 1.6;
     }
 
     .footer strong {
       color: var(--text);
     }
 
-    .footer a {
+    .footer a,
+    .footer button.link-btn {
       color: var(--primary);
       text-decoration: none;
       font-weight: 600;
+      background: none;
+      border: none;
+      font-size: inherit;
+      cursor: pointer;
+      padding: 0;
     }
 
-    .footer a:hover {
+    .footer a:hover,
+    .footer button.link-btn:hover {
       text-decoration: underline;
+    }
+
+    /* Banner de atualização automática */
+    .update-banner {
+      display: none;
+      position: fixed;
+      bottom: 18px;
+      right: 18px;
+      z-index: 9999;
+      background: #111827;
+      color: #ffffff;
+      padding: 12px 16px;
+      border-radius: 10px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      font-size: 0.88rem;
+      align-items: center;
+      gap: 12px;
+      max-width: 340px;
+    }
+
+    .update-banner button {
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-weight: 600;
+      font-size: 0.82rem;
+      cursor: pointer;
+      white-space: nowrap;
     }
 
     @media (max-width: 520px) {
       .options {
         grid-template-columns: 1fr;
+      }
+      .update-banner {
+        left: 16px;
+        right: 16px;
+        max-width: none;
+        justify-content: space-between;
       }
     }
   </style>
@@ -470,8 +514,14 @@
 
     <footer class="footer">
       Desenvolvido por <strong>Nelson Ferreira</strong> •
-      <a href="https://github.com/netcodebr/" target="_blank" rel="noopener">GitHub</a> • v2.1
+      <a href="https://github.com/netcodebr/" target="_blank" rel="noopener">GitHub</a> • v2.2 •
+      <button type="button" class="link-btn" id="checkUpdateBtn">Verificar atualização</button>
     </footer>
+  </div>
+
+  <div class="update-banner" id="updateBanner">
+    <span id="updateText">Nova versão disponível!</span>
+    <button type="button" id="reloadNowBtn" style="display:none;">Atualizar</button>
   </div>
 
   <script>
@@ -506,16 +556,32 @@
     const previewCanvas = document.getElementById("previewCanvas");
     const previewCtx = previewCanvas.getContext("2d");
 
+    const checkUpdateBtn = document.getElementById("checkUpdateBtn");
+    const updateBanner = document.getElementById("updateBanner");
+    const updateText = document.getElementById("updateText");
+    const reloadNowBtn = document.getElementById("reloadNowBtn");
+
     let currentPdf = null;
     let currentBuffer = null;
     let selectedFile = null;
     let isCancelled = false;
+    let isConverting = false;
 
     const MODE_HINTS = {
       hybrid: "<strong>Híbrido:</strong> Mantém fotos, gráficos, tabelas e fundos no slide e cria caixas de texto editáveis com as cores originais por cima.",
       objects: "<strong>Objetos Soltos:</strong> Extrai cada foto/imagem como objeto movível no PowerPoint + textos editáveis. (Formas desenhadas e tabelas sem imagem não vão como objetos).",
       image: "<strong>Imagem:</strong> Transforma cada página em um slide com 100% de fidelidade visual (textos ficam como imagem, mas disponíveis nas Notas)."
     };
+
+    function showUpdateNotice(message, showButton = false) {
+      updateText.textContent = message;
+      reloadNowBtn.style.display = showButton ? "inline-block" : "none";
+      updateBanner.style.display = "flex";
+    }
+
+    reloadNowBtn.addEventListener("click", () => {
+      window.location.reload();
+    });
 
     function formatBytes(bytes) {
       if (bytes < 1024) return bytes + " B";
@@ -662,7 +728,6 @@
       statusText.textContent = "Cancelando...";
     });
 
-    // Cria um proxy de contexto 2D que ignora desenhos de texto (mantém fotos, gráficos, tabelas e fundos)
     function createNoTextContext(ctx) {
       return new Proxy(ctx, {
         get(target, prop) {
@@ -683,7 +748,6 @@
       return [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("").toUpperCase();
     }
 
-    // Detecta a cor exata do texto comparando o canvas completo vs o canvas sem texto
     function detectBoxTextColor(fullData, bgData, canvasW, canvasH, box, renderScale) {
       if (!fullData || !bgData) return "1F2937";
 
@@ -771,7 +835,6 @@
           rgba[k + 3] = 255;
         }
       } else {
-        // 1 bit por pixel (máscaras / preto e branco)
         const stride = Math.ceil(w / 8);
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
@@ -979,6 +1042,7 @@
       }
 
       isCancelled = false;
+      isConverting = true;
       convertBtn.disabled = true;
       pdfInput.disabled = true;
       cancelBtn.style.display = "inline-block";
@@ -1045,7 +1109,6 @@
 
           const slide = pptx.addSlide();
 
-          // Renderiza a página completa para pré-visualização, modo imagem e detecção exata das cores dos textos
           const activeScale = mode === "objects" ? 1.25 : scale;
           const renderVp = page.getViewport({ scale: activeScale });
           fullCanvas.width = renderVp.width;
@@ -1055,7 +1118,6 @@
 
           await page.render({ canvasContext: fullCtx, viewport: renderVp }).promise;
 
-          // Atualiza prévia ao vivo
           previewCanvas.width = Math.min(400, fullCanvas.width);
           previewCanvas.height = (previewCanvas.width / fullCanvas.width) * fullCanvas.height;
           previewCtx.drawImage(fullCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
@@ -1080,7 +1142,6 @@
               h: finalH
             });
           } else if (mode === "hybrid") {
-            // Renderiza fundo com imagens, tabelas e gráficos (ocultando só os textos)
             bgCanvas.width = renderVp.width;
             bgCanvas.height = renderVp.height;
             bgCtx.fillStyle = "#ffffff";
@@ -1182,20 +1243,61 @@
         statusText.textContent = "Erro na conversão: " + (err.message || "falha desconhecida.");
         statusText.className = "status-text error";
       } finally {
+        isConverting = false;
         convertBtn.disabled = false;
         pdfInput.disabled = false;
         cancelBtn.style.display = "none";
       }
     });
 
-    // Registra o Service Worker do PWA
+    // Registra o Service Worker com verificação automática de atualizações
+    let swRegistration = null;
+
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker
-          .register("./service-worker.js")
-          .catch((err) => console.warn("Erro ao registrar Service Worker:", err));
+      window.addEventListener("load", async () => {
+        try {
+          swRegistration = await navigator.serviceWorker.register("./service-worker.js");
+          swRegistration.update().catch(() => {});
+
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            if (refreshing) return;
+            refreshing = true;
+
+            if (isConverting) {
+              showUpdateNotice("Atualização pronta! Conclua e clique para aplicar:", true);
+            } else {
+              showUpdateNotice("Nova versão instalada! Atualizando...", false);
+              setTimeout(() => window.location.reload(), 1000);
+            }
+          });
+        } catch (err) {
+          console.warn("Erro ao registrar Service Worker:", err);
+        }
       });
     }
+
+    checkUpdateBtn.addEventListener("click", async () => {
+      if (!navigator.onLine) {
+        showUpdateNotice("Você está offline. Conecte-se para verificar.", false);
+        setTimeout(() => { updateBanner.style.display = "none"; }, 3000);
+        return;
+      }
+
+      checkUpdateBtn.textContent = "Verificando...";
+      try {
+        if (swRegistration) {
+          await swRegistration.update();
+        }
+        showUpdateNotice("Verificação concluída! Recarregando a versão mais recente...", false);
+        setTimeout(() => window.location.reload(), 700);
+      } catch {
+        showUpdateNotice("Não foi possível verificar agora.", false);
+        setTimeout(() => { updateBanner.style.display = "none"; }, 3000);
+      } finally {
+        checkUpdateBtn.textContent = "Verificar atualização";
+      }
+    });
   </script>
 </body>
 </html>
