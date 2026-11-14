@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<!--
+  =====================================================================
+  Conversor PDF para PPTX - v2.0
+  Autor: Nelson Ferreira
+  GitHub: https://github.com/netcodebr/
+  Descrição: Conversor local (client-side) de arquivos PDF para PPTX.
+
+  Bibliotecas de terceiros utilizadas (uso comercial permitido):
+  - PDF.js (Mozilla) - Licença Apache 2.0
+  - PptxGenJS (Brent Ely) - Licença MIT
+  =====================================================================
+-->
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="author" content="Nelson Ferreira" />
+  <meta name="description" content="Conversor de PDF para PowerPoint (PPTX) 100% local no navegador." />
+  <title>Conversor PDF para PPTX (v2)</title>
+
+  <!-- PWA -->
+  <meta name="theme-color" content="#004aad" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" type="image/jpeg" href="./favicon.jpg" />
+  <link rel="icon" type="image/png" sizes="48x48" href="./icon-48.png" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- PptxGenJS -->
+  <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+
+  <style>
+    :root {
+      --primary: #d24726;
+      --primary-hover: #b5381b;
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --success: #10b981;
+      --error: #ef4444;
+      --warn-bg: #fffbeb;
+      --warn-border: #fde68a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: var(--card);
+      width: 100%;
+      max-width: 640px;
+      border-radius: 14px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+      padding: 30px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 22px;
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 10px;
+      padding: 30px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background-color 0.2s;
+      background-color: #fafafa;
+      display: block;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.dragover {
+      border-color: var(--primary);
+      background-color: #fff5f2;
+    }
+
+    .drop-zone input {
+      display: none;
+    }
+
+    .drop-icon {
+      font-size: 2.2rem;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .drop-text {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .drop-hint {
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
+    .file-info {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: #f3f4f6;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .file-name {
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .password-box {
+      display: none;
+      margin-top: 14px;
+      padding: 12px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      border-radius: 8px;
+    }
+
+    .password-box label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .password-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .password-row input {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    .password-row button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 6px;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .options {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.83rem;
+      font-weight: 600;
+      margin-bottom: 5px;
+      color: var(--text);
+    }
+
+    .field select,
+    .field input[type="text"] {
+      width: 100%;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      background: #fff;
+    }
+
+    .checkbox-row {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.86rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .checkbox-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .actions {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 13px;
+      border: none;
+      border-radius: 8px;
+      background-color: var(--primary);
+      color: #fff;
+      font-size: 0.98rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s, opacity 0.2s;
+    }
+
+    .btn:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+    }
+
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-cancel {
+      display: none;
+      padding: 13px 18px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-cancel:hover {
+      background: #f3f4f6;
+    }
+
+    .progress-wrap {
+      display: none;
+      margin-top: 18px;
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background-color: var(--primary);
+      transition: width 0.2s ease;
+    }
+
+    .status-text {
+      margin-top: 8px;
+      font-size: 0.86rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .status-text.success {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .status-text.error {
+      color: var(--error);
+      font-weight: 600;
+    }
+
+    .preview-wrap {
+      display: none;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .preview-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    #previewCanvas {
+      max-width: 100%;
+      max-height: 220px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      background: #fff;
+    }
+
+    .footer {
+      margin-top: 24px;
+      padding-top: 14px;
+      border-top: 1px solid #e5e7eb;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .footer strong {
+      color: var(--text);
+    }
+
+    .footer a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 500px) {
+      .options {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Conversor PDF para PPTX</h1>
+    <p class="subtitle">Converta PDFs em apresentações PowerPoint 100% localmente no navegador.</p>
+
+    <label class="drop-zone" id="dropZone">
+      <input type="file" id="pdfInput" accept="application/pdf,.pdf" />
+      <span class="drop-icon">📄</span>
+      <div class="drop-text">Clique para selecionar ou arraste o PDF aqui</div>
+      <div class="drop-hint">Seus arquivos não saem do seu dispositivo</div>
+    </label>
+
+    <div class="file-info" id="fileInfo">
+      <span class="file-name" id="fileName"></span>
+      <span id="fileMeta"></span>
+    </div>
+
+    <div class="password-box" id="passwordBox">
+      <label for="pdfPassword">Este PDF está protegido por senha:</label>
+      <div class="password-row">
+        <input type="password" id="pdfPassword" placeholder="Digite a senha do PDF" />
+        <button type="button" id="unlockBtn">Desbloquear</button>
+      </div>
+    </div>
+
+    <div class="options">
+      <div class="field">
+        <label for="modeSelect">Modo de Conversão</label>
+        <select id="modeSelect">
+          <option value="image" selected>Imagem (Fidelidade 100%)</option>
+          <option value="editable">Texto Editável (Experimental)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="aspectSelect">Proporção do Slide</label>
+        <select id="aspectSelect">
+          <option value="pdf" selected>Original do PDF</option>
+          <option value="16x9">Widescreen (16:9)</option>
+          <option value="4x3">Padrão (4:3)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="qualitySelect">Qualidade da Imagem</label>
+        <select id="qualitySelect">
+          <option value="1.5">Padrão (mais rápido)</option>
+          <option value="2" selected>Alta (recomendado)</option>
+          <option value="3">Máxima (arquivo maior)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="formatSelect">Formato da Imagem</label>
+        <select id="formatSelect">
+          <option value="image/jpeg" selected>JPEG (mais leve)</option>
+          <option value="image/png">PNG (sem perdas)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="pageRangeInput">Páginas (vazio = todas)</label>
+        <input type="text" id="pageRangeInput" placeholder="Ex: 1-3, 5, 8-10" />
+      </div>
+
+      <div class="field">
+        <label for="outputNameInput">Nome do arquivo final</label>
+        <input type="text" id="outputNameInput" placeholder="apresentacao.pptx" />
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="notesCheck" checked />
+        <span>Incluir texto extraído nas <strong>Notas do Apresentador</strong> (permite copiar/pesquisar texto)</span>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="convertBtn" disabled>Converter para PPTX</button>
+      <button class="btn-cancel" id="cancelBtn" type="button">Cancelar</button>
+    </div>
+
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div class="status-text" id="statusText">Preparando...</div>
+    </div>
+
+    <div class="preview-wrap" id="previewWrap">
+      <div class="preview-label" id="previewLabel">Pré-visualização</div>
+      <canvas id="previewCanvas"></canvas>
+    </div>
+
+    <footer class="footer">
+      Desenvolvido por <strong>Nelson Ferreira</strong> •
+      <a href="https://github.com/netcodebr/" target="_blank" rel="noopener">GitHub</a> • v2.0
+    </footer>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const dropZone = document.getElementById("dropZone");
+    const pdfInput = document.getElementById("pdfInput");
+    const fileInfo = document.getElementById("fileInfo");
+    const fileNameEl = document.getElementById("fileName");
+    const fileMetaEl = document.getElementById("fileMeta");
+    const passwordBox = document.getElementById("passwordBox");
+    const pdfPasswordInput = document.getElementById("pdfPassword");
+    const unlockBtn = document.getElementById("unlockBtn");
+
+    const modeSelect = document.getElementById("modeSelect");
+    const aspectSelect = document.getElementById("aspectSelect");
+    const qualitySelect = document.getElementById("qualitySelect");
+    const formatSelect = document.getElementById("formatSelect");
+    const pageRangeInput = document.getElementById("pageRangeInput");
+    const outputNameInput = document.getElementById("outputNameInput");
+    const notesCheck = document.getElementById("notesCheck");
+
+    const convertBtn = document.getElementById("convertBtn");
+    const cancelBtn = document.getElementById("cancelBtn");
+    const progressWrap = document.getElementById("progressWrap");
+    const progressBar = document.getElementById("progressBar");
+    const statusText = document.getElementById("statusText");
+    const previewWrap = document.getElementById("previewWrap");
+    const previewLabel = document.getElementById("previewLabel");
+    const previewCanvas = document.getElementById("previewCanvas");
+    const previewCtx = previewCanvas.getContext("2d");
+
+    let currentPdf = null;
+    let currentBuffer = null;
+    let selectedFile = null;
+    let isCancelled = false;
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      const kb = bytes / 1024;
+      if (kb < 1024) return kb.toFixed(1) + " KB";
+      return (kb / 1024).toFixed(2) + " MB";
+    }
+
+    function parsePageRange(input, maxPages) {
+      const trimmed = input.trim();
+      if (!trimmed) {
+        return Array.from({ length: maxPages }, (_, i) => i + 1);
+      }
+
+      const pages = new Set();
+      const parts = trimmed.split(",");
+
+      for (const part of parts) {
+        const clean = part.trim();
+        if (!clean) continue;
+
+        if (clean.includes("-")) {
+          const [startStr, endStr] = clean.split("-");
+          const start = parseInt(startStr, 10);
+          const end = parseInt(endStr, 10);
+          if (isNaN(start) || isNaN(end) || start > end) {
+            throw new Error(`Intervalo inválido: "${clean}"`);
+          }
+          for (let p = Math.max(1, start); p <= Math.min(maxPages, end); p++) {
+            pages.add(p);
+          }
+        } else {
+          const p = parseInt(clean, 10);
+          if (isNaN(p) || p < 1 || p > maxPages) {
+            throw new Error(`Página inválida: "${clean}" (máx: ${maxPages})`);
+          }
+          pages.add(p);
+        }
+      }
+
+      const sorted = Array.from(pages).sort((a, b) => a - b);
+      if (sorted.length === 0) {
+        throw new Error("Nenhuma página válida selecionada.");
+      }
+      return sorted;
+    }
+
+    async function loadPdfDocument(buffer, password = undefined) {
+      try {
+        const loadingTask = pdfjsLib.getDocument({ data: buffer.slice(0), password });
+        currentPdf = await loadingTask.promise;
+
+        passwordBox.style.display = "none";
+        fileMetaEl.textContent = `${formatBytes(selectedFile.size)} • ${currentPdf.numPages} pág.`;
+        convertBtn.disabled = false;
+
+        const firstPage = await currentPdf.getPage(1);
+        const vp = firstPage.getViewport({ scale: 0.6 });
+        previewCanvas.width = vp.width;
+        previewCanvas.height = vp.height;
+        previewCtx.fillStyle = "#ffffff";
+        previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+        await firstPage.render({ canvasContext: previewCtx, viewport: vp }).promise;
+        firstPage.cleanup();
+
+        previewLabel.textContent = "Pré-visualização (Página 1)";
+        previewWrap.style.display = "block";
+      } catch (err) {
+        if (err && err.name === "PasswordException") {
+          passwordBox.style.display = "block";
+          convertBtn.disabled = true;
+          if (err.code === 2) {
+            alert("Senha incorreta. Tente novamente.");
+          }
+          pdfPasswordInput.focus();
+        } else {
+          alert("Não foi possível abrir o PDF: " + (err.message || "arquivo inválido."));
+        }
+      }
+    }
+
+    async function handleFile(file) {
+      if (!file || (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf"))) {
+        alert("Por favor, selecione um arquivo PDF válido.");
+        return;
+      }
+
+      selectedFile = file;
+      currentPdf = null;
+      convertBtn.disabled = true;
+      progressWrap.style.display = "none";
+      previewWrap.style.display = "none";
+
+      fileNameEl.textContent = file.name;
+      fileMetaEl.textContent = formatBytes(file.size);
+      fileInfo.style.display = "flex";
+      outputNameInput.value = file.name.replace(/\.pdf$/i, "") + ".pptx";
+      pdfPasswordInput.value = "";
+
+      currentBuffer = await file.arrayBuffer();
+      await loadPdfDocument(currentBuffer);
+    }
+
+    unlockBtn.addEventListener("click", () => {
+      if (currentBuffer) {
+        loadPdfDocument(currentBuffer, pdfPasswordInput.value);
+      }
+    });
+
+    pdfPasswordInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && currentBuffer) {
+        loadPdfDocument(currentBuffer, pdfPasswordInput.value);
+      }
+    });
+
+    modeSelect.addEventListener("change", () => {
+      const isEditable = modeSelect.value === "editable";
+      qualitySelect.disabled = isEditable;
+      formatSelect.disabled = isEditable;
+    });
+
+    pdfInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      isCancelled = true;
+      cancelBtn.disabled = true;
+      statusText.textContent = "Cancelando...";
+    });
+
+    function extractNotesText(textContent) {
+      let lines = [];
+      let currentLine = [];
+      let lastY = null;
+
+      for (const item of textContent.items) {
+        if (!item.str) continue;
+        const y = item.transform[5];
+        if (lastY !== null && Math.abs(y - lastY) > 5) {
+          if (currentLine.length) lines.push(currentLine.join(" "));
+          currentLine = [];
+        }
+        currentLine.push(item.str);
+        lastY = y;
+      }
+      if (currentLine.length) lines.push(currentLine.join(" "));
+      return lines.join("\n").replace(/ +/g, " ").trim();
+    }
+
+    function addEditableTextToSlide(slide, textContent, pageW, pageH, offsetX, offsetY, fitRatio) {
+      const rawItems = textContent.items
+        .filter((it) => it.str && it.str.trim().length > 0)
+        .map((it) => {
+          const fontSizePt = Math.max(6, Math.hypot(it.transform[0], it.transform[1]));
+          const xPt = it.transform[4];
+          const yTopPt = pageH * 72 - it.transform[5] - fontSizePt * 0.9;
+          return {
+            str: it.str,
+            xPt,
+            yTopPt,
+            wPt: it.width || it.str.length * fontSizePt * 0.5,
+            fontSizePt
+          };
+        });
+
+      rawItems.sort((a, b) => {
+        if (Math.abs(a.yTopPt - b.yTopPt) > 4) return a.yTopPt - b.yTopPt;
+        return a.xPt - b.xPt;
+      });
+
+      const merged = [];
+      for (const item of rawItems) {
+        const prev = merged[merged.length - 1];
+        if (
+          prev &&
+          Math.abs(prev.yTopPt - item.yTopPt) <= Math.max(4, prev.fontSizePt * 0.4) &&
+          item.xPt - (prev.xPt + prev.wPt) < prev.fontSizePt * 1.5
+        ) {
+          const gap = item.xPt - (prev.xPt + prev.wPt);
+          prev.str += (gap > prev.fontSizePt * 0.15 ? " " : "") + item.str;
+          prev.wPt = Math.max(prev.wPt, item.xPt + item.wPt - prev.xPt);
+        } else {
+          merged.push({ ...item });
+        }
+      }
+
+      for (const box of merged) {
+        const x = offsetX + (box.xPt / 72) * fitRatio;
+        const y = offsetY + (box.yTopPt / 72) * fitRatio;
+        const w = Math.max(0.3, (box.wPt / 72) * fitRatio + 0.25);
+        const h = Math.max(0.2, (box.fontSizePt / 72) * fitRatio * 1.4);
+        const fontSize = Math.max(6, Math.round(box.fontSizePt * fitRatio));
+
+        slide.addText(box.str, {
+          x,
+          y,
+          w,
+          h,
+          fontSize,
+          color: "1F2937",
+          valign: "top",
+          margin: 0
+        });
+      }
+    }
+
+    convertBtn.addEventListener("click", async () => {
+      if (!currentPdf) return;
+
+      let pagesToConvert;
+      try {
+        pagesToConvert = parsePageRange(pageRangeInput.value, currentPdf.numPages);
+      } catch (err) {
+        alert(err.message);
+        return;
+      }
+
+      isCancelled = false;
+      convertBtn.disabled = true;
+      pdfInput.disabled = true;
+      cancelBtn.style.display = "inline-block";
+      cancelBtn.disabled = false;
+      progressWrap.style.display = "block";
+      progressBar.style.width = "0%";
+      statusText.className = "status-text";
+
+      try {
+        const mode = modeSelect.value;
+        const aspect = aspectSelect.value;
+        const scale = parseFloat(qualitySelect.value);
+        const imgFormat = formatSelect.value;
+        const includeNotes = notesCheck.checked;
+
+        const pptx = new PptxGenJS();
+        // Opcional: descomente a linha abaixo para gravar seu nome nos metadados do arquivo .pptx
+        // pptx.author = "Nelson Ferreira";
+
+        let slideW, slideH;
+        if (aspect === "16x9") {
+          pptx.layout = "LAYOUT_16x9";
+          slideW = 10;
+          slideH = 5.625;
+        } else if (aspect === "4x3") {
+          pptx.layout = "LAYOUT_4x3";
+          slideW = 10;
+          slideH = 7.5;
+        } else {
+          const firstPage = await currentPdf.getPage(pagesToConvert[0]);
+          const firstVp = firstPage.getViewport({ scale: 1.0 });
+          slideW = firstVp.width / 72;
+          slideH = firstVp.height / 72;
+          firstPage.cleanup();
+          pptx.defineLayout({ name: "PDF_LAYOUT", width: slideW, height: slideH });
+          pptx.layout = "PDF_LAYOUT";
+        }
+
+        const renderCanvas = document.createElement("canvas");
+        const renderCtx = renderCanvas.getContext("2d");
+
+        for (let i = 0; i < pagesToConvert.length; i++) {
+          if (isCancelled) {
+            statusText.textContent = "Conversão cancelada pelo usuário.";
+            statusText.className = "status-text error";
+            return;
+          }
+
+          const pageNum = pagesToConvert[i];
+          statusText.textContent = `Processando página ${pageNum} (${i + 1} de ${pagesToConvert.length})...`;
+
+          const page = await currentPdf.getPage(pageNum);
+          const baseVp = page.getViewport({ scale: 1.0 });
+          const pageW = baseVp.width / 72;
+          const pageH = baseVp.height / 72;
+
+          const fitRatio = Math.min(slideW / pageW, slideH / pageH);
+          const finalW = pageW * fitRatio;
+          const finalH = pageH * fitRatio;
+          const offsetX = (slideW - finalW) / 2;
+          const offsetY = (slideH - finalH) / 2;
+
+          const slide = pptx.addSlide();
+
+          let textContent = null;
+          if (includeNotes || mode === "editable") {
+            textContent = await page.getTextContent();
+          }
+
+          if (mode === "image") {
+            const renderVp = page.getViewport({ scale });
+            renderCanvas.width = renderVp.width;
+            renderCanvas.height = renderVp.height;
+
+            renderCtx.fillStyle = "#ffffff";
+            renderCtx.fillRect(0, 0, renderCanvas.width, renderCanvas.height);
+
+            await page.render({ canvasContext: renderCtx, viewport: renderVp }).promise;
+
+            previewCanvas.width = Math.min(400, renderCanvas.width);
+            previewCanvas.height = (previewCanvas.width / renderCanvas.width) * renderCanvas.height;
+            previewCtx.drawImage(renderCanvas, 0, 0, previewCanvas.width, previewCanvas.height);
+            previewLabel.textContent = `Convertendo página ${pageNum}`;
+
+            const imgData =
+              imgFormat === "image/jpeg"
+                ? renderCanvas.toDataURL("image/jpeg", 0.92)
+                : renderCanvas.toDataURL("image/png");
+
+            slide.addImage({
+              data: imgData,
+              x: offsetX,
+              y: offsetY,
+              w: finalW,
+              h: finalH
+            });
+          } else {
+            addEditableTextToSlide(slide, textContent, pageW, pageH, offsetX, offsetY, fitRatio);
+          }
+
+          if (includeNotes && textContent) {
+            const notes = extractNotesText(textContent);
+            if (notes) slide.addNotes(notes);
+          }
+
+          page.cleanup();
+
+          const percent = Math.round(((i + 1) / pagesToConvert.length) * 90);
+          progressBar.style.width = `${percent}%`;
+
+          await new Promise((r) => setTimeout(r, 0));
+        }
+
+        if (isCancelled) {
+          statusText.textContent = "Conversão cancelada pelo usuário.";
+          statusText.className = "status-text error";
+          return;
+        }
+
+        statusText.textContent = "Empacotando arquivo PPTX...";
+        let outputName = outputNameInput.value.trim() || "apresentacao.pptx";
+        if (!outputName.toLowerCase().endsWith(".pptx")) {
+          outputName += ".pptx";
+        }
+
+        await pptx.writeFile({ fileName: outputName });
+
+        progressBar.style.width = "100%";
+        previewLabel.textContent = "Concluído";
+        statusText.textContent = `Pronto! "${outputName}" (${pagesToConvert.length} slides) foi baixado.`;
+        statusText.className = "status-text success";
+      } catch (err) {
+        console.error(err);
+        statusText.textContent = "Erro na conversão: " + (err.message || "falha desconhecida.");
+        statusText.className = "status-text error";
+      } finally {
+        convertBtn.disabled = false;
+        pdfInput.disabled = false;
+        cancelBtn.style.display = "none";
+      }
+    });
+
+    // Registra o Service Worker do PWA
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker
+          .register("./service-worker.js")
+          .catch((err) => console.warn("Erro ao registrar Service Worker:", err));
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+{
+  "name": "Conversor PDF para PPTX",
+  "short_name": "PDF para PPTX",
+  "description": "PWA para converter arquivos PDF em apresentações PowerPoint (PPTX) 100% offline.",
+  "start_url": "./conversor-pdf-pptx.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "id": "com.netcodebr.conversor",
+  "scope": "./",
+  "background_color": "#004aad",
+  "theme_color": "#004aad",
+  "lang": "pt-BR",
+  "categories": [
+    "tools",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icon-48.png",
+      "sizes": "48x48",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Converter PDF",
+      "url": "./conversor-pdf-pptx.html",
+      "description": "Converter PDF para PPTX rapidamente"
+    }
+  ],
+  "author": "Nelson Ferreira do Nascimento Junior"
+}
